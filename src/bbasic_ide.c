@@ -272,6 +272,10 @@ static DWORD WINAPI build_worker(LPVOID parameter)
     char include_path[MAX_PATH];
     char runtime_path[MAX_PATH];
     char win32_path[MAX_PATH];
+    char gcc_root[MAX_PATH];
+    char gcc_include[MAX_PATH];
+    char gcc_stddef[MAX_PATH];
+    char system_include_option[MAX_PATH + 32] = "";
     DWORD exit_code = 1U;
     bool windows_application;
 
@@ -297,12 +301,20 @@ static DWORD WINAPI build_worker(LPVOID parameter)
               "src\\bbasic_runtime.c");
     join_path(win32_path, sizeof(win32_path), job->repository,
               "src\\bbasic_win32.c");
+    directory_of(gcc_root, sizeof(gcc_root), job->gcc);
+    parent_directory(gcc_root);
+    join_path(gcc_include, sizeof(gcc_include), gcc_root, "include");
+    join_path(gcc_stddef, sizeof(gcc_stddef), gcc_include, "stddef.h");
+    if (file_exists(gcc_stddef))
+        (void)snprintf(system_include_option, sizeof(system_include_option),
+                       "-isystem \"%s\" ", gcc_include);
     (void)snprintf(
         command, sizeof(command),
-        "\"%s\" -std=c11 -O2 -I \"%s\" \"%s\" \"%s\" \"%s\" "
+        "\"%s\" -std=c11 -O2 %s-I \"%s\" \"%s\" \"%s\" \"%s\" "
         "%s-lm -lgdi32 -luser32 -lcomdlg32 -lwinmm -o \"%s\"",
-        job->gcc, include_path, job->generated, runtime_path, win32_path,
-        windows_application ? "-mwindows " : "", job->executable);
+        job->gcc, system_include_option, include_path, job->generated,
+        runtime_path, win32_path, windows_application ? "-mwindows " : "",
+        job->executable);
     exit_code = 1U;
     if (!run_process_capture(command, job->repository, &output, &exit_code) ||
         exit_code != 0U) {

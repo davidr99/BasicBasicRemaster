@@ -60,8 +60,17 @@ Set-Content -LiteralPath (Join-Path $stage "BasicBasic IDE.cmd") `
 
 if (-not $WithoutToolchain) {
     Write-Host "Copying the portable GCC toolchain..."
-    Copy-Item -LiteralPath $gccRoot -Destination (Join-Path $stage "toolchain") `
-        -Recurse
+    $toolchain = Join-Path $stage "toolchain"
+    New-Item -ItemType Directory -Path $toolchain | Out-Null
+    $robocopy = Join-Path $env:SystemRoot "System32\robocopy.exe"
+    if (-not (Test-Path -LiteralPath $robocopy)) {
+        throw "Windows robocopy.exe is required to stage the GCC toolchain."
+    }
+    & $robocopy $gccRoot $toolchain /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 `
+        /NFL /NDL /NJH /NJS /NP
+    if ($LASTEXITCODE -ge 8) {
+        throw "Failed to copy the GCC toolchain (robocopy exit $LASTEXITCODE)."
+    }
 }
 
 $packageReadme = @"

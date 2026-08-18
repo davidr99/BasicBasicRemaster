@@ -1,0 +1,111 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-package:
+    name: Build, test, and package
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install MinGW GCC
+        uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Locate MinGW GCC
+        shell: pwsh
+        run: |
+          $gcc = Join-Path '${{ steps.msys2.outputs.msys2-location }}' `
+            'mingw64\bin\gcc.exe'
+          if (-not (Test-Path -LiteralPath $gcc)) {
+            throw "GCC was not installed at $gcc"
+          }
+          "BBASIC_GCC=$gcc" | Out-File -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 -Append
+
+      - name: Run compiler and runtime regressions
+        shell: pwsh
+        run: .\tools\test.ps1 -Gcc $env:BBASIC_GCC
+
+      - name: Build the complete BASIC sample corpus
+        shell: pwsh
+        run: >-
+          .\tools\build_original_corpus.ps1
+          -SourceDirectory .\examples\original
+          -Gcc $env:BBASIC_GCC
+
+      - name: Build the native IDE
+        shell: pwsh
+        run: .\tools\build_ide.ps1 -Gcc $env:BBASIC_GCC
+
+      - name: Create offline deployment package
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ci-${{ github.run_number }}
+        run: >-
+          .\tools\package.ps1
+          -Gcc $env:BBASIC_GCC
+          -Version $env:PACKAGE_VERSION
+
+      - name: Smoke-test packaged compiler and toolchain
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem .\dist -Directory |
+            Where-Object Name -Like 'BasicBasic-*-win64' |
+            Select-Object -First 1
+          if (-not $package) { throw 'Deployment directory was not created.' }
+          $root = $package.FullName
+          $env:Path = (Join-Path $root 'toolchain\bin') + ';' + $env:Path
+          $systemInclude = Join-Path $root 'toolchain\include'
+          if (-not (Test-Path (Join-Path $systemInclude 'stddef.h'))) {
+            throw 'Packaged GCC system headers were not staged.'
+          }
+          $generated = Join-Path $root 'package-smoke.c'
+          $executable = Join-Path $root 'package-smoke.exe'
+          & (Join-Path $root 'bbasicc.exe') `
+            (Join-Path $root 'examples\hello.bas') -o $generated
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged translator failed.' }
+          & (Join-Path $root 'toolchain\bin\gcc.exe') -std=c11 -O2 `
+            -isystem $systemInclude `
+            -I (Join-Path $root 'include') $generated `
+            (Join-Path $root 'src\bbasic_runtime.c') `
+            (Join-Path $root 'src\bbasic_win32.c') `
+            -lm -lgdi32 -luser32 -lcomdlg32 -lwinmm -o $executable
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged GCC failed.' }
+          $output = (& $executable | Out-String)
+          if ($output -notmatch 'Hello from modern BasicBasic!') {
+            throw 'Packaged program smoke test failed.'
+          }
+
+      - name: Verify deployment checksum
+        shell: pwsh
+        run: |
+          $archive = Get-Item .\dist\*.zip
+          $expected = (Get-Content ($archive.FullName + '.sha256')).Split(' ')[0]
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'Deployment checksum mismatch.' }
+
+      - name: Upload Windows deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: BasicBasic-Windows-${{ github.run_number }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14

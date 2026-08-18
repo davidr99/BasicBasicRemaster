@@ -33,7 +33,8 @@ To rebuild every supplied original program:
 ```
 
 This currently produces native executables for all 20 `.BAS` files in the
-original directory.
+original directory. Byte-preserved copies of that historical source corpus are
+also kept under `examples\original` for reproducible builds and CI.
 
 Run the noninteractive language, file, embedded-NUL string, and Win32/GDI
 regressions with:

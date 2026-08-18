@@ -1,6 +1,7 @@
 * text=auto eol=lf
 
 *.bas text eol=lf
+examples/original/*.BAS -text -eol
 *.c text eol=lf
 *.h text eol=lf
 *.md text eol=lf
