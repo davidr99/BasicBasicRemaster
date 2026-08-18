@@ -81,6 +81,26 @@ Use `-WithoutToolchain` for a much smaller package intended for computers that
 already have MinGW GCC on `PATH` or selected through `BBASIC_GCC`. Use `-Version`
 and `-OutputDirectory` to control the package name and destination.
 
+## Download or publish a release
+
+Each GitHub Actions run publishes two downloadable artifacts:
+
+- `BasicBasic-Windows-*` contains the complete offline deployment ZIP and its
+  SHA-256 checksum.
+- `BasicBasic-Executables-*` exposes `bbasic-ide.exe`, `bbasicc.exe`, and the
+  compiled executables for all 20 original sample programs directly in the
+  downloaded artifact.
+
+Pushing a version tag builds the same files and creates a GitHub Release with
+both ZIP packages attached. For example:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag must start with `v`; the remainder becomes the package version.
+
 ## CMake build
 
 With GCC and CMake installed:

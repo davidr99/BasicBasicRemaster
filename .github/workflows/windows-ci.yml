@@ -3,6 +3,8 @@ name: Windows CI
 on:
   push:
     branches: [master, main]
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
@@ -14,10 +16,12 @@ jobs:
     name: Build, test, and package
     runs-on: windows-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install MinGW GCC
         uses: msys2/setup-msys2@v2
@@ -53,10 +57,22 @@ jobs:
         shell: pwsh
         run: .\tools\build_ide.ps1 -Gcc $env:BBASIC_GCC
 
+      - name: Select package version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -notmatch '^v(.+)$') {
+              throw "Release tag must start with v: $env:GITHUB_REF_NAME"
+            }
+            $version = $Matches[1]
+          } else {
+            $version = "ci-${{ github.run_number }}"
+          }
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 -Append
+
       - name: Create offline deployment package
         shell: pwsh
-        env:
-          PACKAGE_VERSION: ci-${{ github.run_number }}
         run: >-
           .\tools\package.ps1
           -Gcc $env:BBASIC_GCC
@@ -92,20 +108,76 @@ jobs:
             throw 'Packaged program smoke test failed.'
           }
 
+      - name: Stage standalone executables
+        shell: pwsh
+        run: |
+          $bundleName = "BasicBasic-Executables-$env:PACKAGE_VERSION"
+          $bundle = Join-Path .\dist $bundleName
+          $samples = Join-Path $bundle 'samples'
+          New-Item -ItemType Directory -Force -Path $samples | Out-Null
+          Copy-Item .\build-tools\bbasic-ide.exe -Destination $bundle
+          Copy-Item .\build-tools\bbasicc.exe -Destination $bundle
+          $sources = Get-ChildItem .\examples\original -Filter '*.BAS' |
+            Sort-Object Name
+          foreach ($source in $sources) {
+            $executable = Join-Path .\build-original-corpus `
+              ($source.BaseName + '.exe')
+            if (-not (Test-Path -LiteralPath $executable)) {
+              throw "Missing sample executable: $executable"
+            }
+            Copy-Item -LiteralPath $executable -Destination $samples
+          }
+          $builtSamples = @(Get-ChildItem $samples -Filter '*.exe')
+          if ($builtSamples.Count -ne $sources.Count) {
+            throw "Expected $($sources.Count) sample executables, found $($builtSamples.Count)."
+          }
+          $archive = Join-Path .\dist ($bundleName + '.zip')
+          & (Join-Path $env:SystemRoot 'System32\tar.exe') -a -cf $archive `
+            -C .\dist $bundleName
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to create the standalone executable archive.'
+          }
+
       - name: Verify deployment checksum
         shell: pwsh
         run: |
-          $archive = Get-Item .\dist\*.zip
+          $archive = Get-Item `
+            ".\dist\BasicBasic-$env:PACKAGE_VERSION-win64.zip"
           $expected = (Get-Content ($archive.FullName + '.sha256')).Split(' ')[0]
           $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw 'Deployment checksum mismatch.' }
 
       - name: Upload Windows deployment
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BasicBasic-Windows-${{ github.run_number }}
           path: |
-            dist/*.zip
-            dist/*.sha256
+            dist/BasicBasic-${{ env.PACKAGE_VERSION }}-win64.zip
+            dist/BasicBasic-${{ env.PACKAGE_VERSION }}-win64.zip.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload standalone executables
+        uses: actions/upload-artifact@v7
+        with:
+          name: BasicBasic-Executables-${{ github.run_number }}
+          path: dist/BasicBasic-Executables-${{ env.PACKAGE_VERSION }}/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $deployment = ".\dist\BasicBasic-$env:PACKAGE_VERSION-win64.zip"
+          $checksum = $deployment + '.sha256'
+          $executables = `
+            ".\dist\BasicBasic-Executables-$env:PACKAGE_VERSION.zip"
+          gh release create $env:GITHUB_REF_NAME `
+            $deployment $checksum $executables `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "BasicBasic Remaster $env:GITHUB_REF_NAME" `
+            --generate-notes `
+            --verify-tag
