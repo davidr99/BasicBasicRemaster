@@ -21,25 +21,37 @@ jobs:
 
       - name: Install MinGW GCC
         uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW64
           update: true
           install: mingw-w64-x86_64-gcc
 
+      - name: Locate MinGW GCC
+        shell: pwsh
+        run: |
+          $gcc = Join-Path '${{ steps.msys2.outputs.msys2-location }}' `
+            'mingw64\bin\gcc.exe'
+          if (-not (Test-Path -LiteralPath $gcc)) {
+            throw "GCC was not installed at $gcc"
+          }
+          "BBASIC_GCC=$gcc" | Out-File -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 -Append
+
       - name: Run compiler and runtime regressions
         shell: pwsh
-        run: .\tools\test.ps1 -Gcc C:\msys64\mingw64\bin\gcc.exe
+        run: .\tools\test.ps1 -Gcc $env:BBASIC_GCC
 
       - name: Build the complete BASIC sample corpus
         shell: pwsh
         run: >-
           .\tools\build_original_corpus.ps1
           -SourceDirectory .\examples\original
-          -Gcc C:\msys64\mingw64\bin\gcc.exe
+          -Gcc $env:BBASIC_GCC
 
       - name: Build the native IDE
         shell: pwsh
-        run: .\tools\build_ide.ps1 -Gcc C:\msys64\mingw64\bin\gcc.exe
+        run: .\tools\build_ide.ps1 -Gcc $env:BBASIC_GCC
 
       - name: Create offline deployment package
         shell: pwsh
@@ -47,7 +59,7 @@ jobs:
           PACKAGE_VERSION: ci-${{ github.run_number }}
         run: >-
           .\tools\package.ps1
-          -Gcc C:\msys64\mingw64\bin\gcc.exe
+          -Gcc $env:BBASIC_GCC
           -Version $env:PACKAGE_VERSION
 
       - name: Smoke-test packaged compiler and toolchain
