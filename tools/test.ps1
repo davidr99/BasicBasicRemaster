@@ -121,7 +121,9 @@ Push-Location $testDirectory
 try {
     $dialogProcess = Start-Process -FilePath ".\win32_dialog_smoke.exe" `
         -PassThru -WindowStyle Hidden
-    if (-not $dialogProcess.WaitForExit(5000)) {
+    # Hosted Windows runners can take several seconds to initialize and
+    # schedule the dialog controls even though the smoke closes automatically.
+    if (-not $dialogProcess.WaitForExit(15000)) {
         $dialogProcess.Kill()
         throw "Win32 dialog smoke test timed out."
     }

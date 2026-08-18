@@ -81,6 +81,24 @@ Use `-WithoutToolchain` for a much smaller package intended for computers that
 already have MinGW GCC on `PATH` or selected through `BBASIC_GCC`. Use `-Version`
 and `-OutputDirectory` to control the package name and destination.
 
+## Download or publish a release
+
+Each GitHub Actions run publishes one `BasicBasic-Windows-*` artifact containing
+the complete offline deployment ZIP and its SHA-256 checksum. Sample EXEs are
+not packaged because the included compiler can create them from `.BAS` files.
+
+Pushing a version tag creates a GitHub Release with one clean end-user ZIP. It
+contains the IDE, compiler, runtime sources, and portable GCC toolchain needed
+to compile and run programs; repository documentation, tests, and sample files
+stay out of the release package. For example:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag must start with `v`; the remainder becomes the package version.
+
 ## CMake build
 
 With GCC and CMake installed:
@@ -106,7 +124,7 @@ With MinGW on Windows, append
 
 The implemented corpus surface includes:
 
-- comments plus `WINDOWS NAME` and `WINDOWS SIZE` metacommands
+- comments plus `WINDOWS NAME`, `WINDOWS SIZE`, and `REM $ICON` metacommands
 - numeric and string expressions
 - `PRINT`
 - block and single-line `IF` / `ELSEIF` / `ELSE` / `END IF`

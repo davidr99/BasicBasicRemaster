@@ -49,9 +49,35 @@ if ($WindowsApp -or (-not $ConsoleApp -and $generatedWindowsApp)) {
     $subsystemOptions += "-mwindows"
 }
 
-& $Gcc -std=c11 -O2 @gccSystemOptions -I (Join-Path $repo "include") $generated `
-    (Join-Path $repo "src\bbasic_runtime.c") `
-    (Join-Path $repo "src\bbasic_win32.c") `
+$linkInputs = @(
+    $generated,
+    (Join-Path $repo "src\bbasic_runtime.c"),
+    (Join-Path $repo "src\bbasic_win32.c")
+)
+$iconMarker = Select-String -LiteralPath $generated `
+    -Pattern 'BBASIC_ICON:\s*(?<path>.*?)\s*\*/' | Select-Object -First 1
+if ($iconMarker) {
+    $iconName = $iconMarker.Matches[0].Groups['path'].Value.Trim()
+    $iconPath = Join-Path $inputFile.DirectoryName $iconName
+    $iconFile = Get-Item -LiteralPath $iconPath -ErrorAction Stop
+    $windres = Join-Path (Split-Path -Parent $Gcc) "windres.exe"
+    if (-not (Test-Path -LiteralPath $windres -PathType Leaf)) {
+        throw "The ICON directive requires windres.exe beside GCC: $windres"
+    }
+    $resourceScript = Join-Path $buildDirectory `
+        ($inputFile.BaseName + "-icon.rc")
+    $resourceObject = Join-Path $buildDirectory `
+        ($inputFile.BaseName + "-icon.o")
+    $resourceIcon = $iconFile.FullName.Replace('\', '/')
+    Set-Content -LiteralPath $resourceScript -Encoding ASCII `
+        -Value "1 ICON `"$resourceIcon`""
+    & $windres -i $resourceScript -o $resourceObject
+    if ($LASTEXITCODE -ne 0) { throw "Failed to compile icon resource." }
+    $linkInputs += $resourceObject
+}
+
+& $Gcc -std=c11 -O2 @gccSystemOptions -I (Join-Path $repo "include") `
+    @linkInputs `
     @subsystemOptions -lm -lgdi32 -luser32 -lcomdlg32 -lwinmm -o $outputPath
 if ($LASTEXITCODE -ne 0) { throw "Failed to link the generated Windows program." }
 

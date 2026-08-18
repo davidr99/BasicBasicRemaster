@@ -19,26 +19,39 @@ static DWORD WINAPI inspect_dialog(LPVOID unused)
     char selected[MAX_PATH] = "";
     unsigned attempts = 0U;
     (void)unused;
-    while (dialog == NULL && attempts++ < 500U) {
+    while (attempts++ < 500U) {
         Sleep(10U);
         dialog = FindWindowA("ModernBasicBasicDialog", "Dialog smoke");
+        if (dialog == NULL) continue;
+        label = GetDlgItem(dialog, 100);
+        filename = GetDlgItem(dialog, 151);
+        filelist = GetDlgItem(dialog, 152);
+        button = GetDlgItem(dialog, 104);
+        if (label != NULL && filename != NULL && filelist != NULL &&
+            button != NULL && SendMessageA(filelist, LB_GETCOUNT, 0, 0) >= 1)
+            break;
     }
-    if (dialog == NULL) return 1U;
+    if (dialog == NULL) {
+        HWND owner_window = FindWindowA("ModernBasicBasicWindow", NULL);
+        if (owner_window != NULL) PostMessageA(owner_window, WM_CLOSE, 0, 0);
+        return 1U;
+    }
 
     owner = GetWindow(dialog, GW_OWNER);
-    label = GetDlgItem(dialog, 100);
-    filename = GetDlgItem(dialog, 151);
-    filelist = GetDlgItem(dialog, 152);
-    button = GetDlgItem(dialog, 104);
     if (owner == NULL || IsWindowEnabled(owner) || label == NULL ||
         filename == NULL || filelist == NULL || button == NULL ||
         GetParent(label) != dialog ||
         SendMessageA(label, WM_GETFONT, 0, 0) == 0 ||
         (HBRUSH)GetClassLongPtrA(dialog, GCLP_HBRBACKGROUND) !=
-            GetSysColorBrush(COLOR_3DFACE))
+            GetSysColorBrush(COLOR_3DFACE)) {
+        PostMessageA(dialog, WM_CLOSE, 0, 0);
         return 2U;
+    }
 
-    if (SendMessageA(filelist, LB_GETCOUNT, 0, 0) < 1) return 3U;
+    if (SendMessageA(filelist, LB_GETCOUNT, 0, 0) < 1) {
+        PostMessageA(dialog, WM_CLOSE, 0, 0);
+        return 3U;
+    }
     SendMessageA(filelist, LB_SETCURSEL, 0, 0);
     PostMessageA(dialog, WM_COMMAND, MAKEWPARAM(152, LBN_SELCHANGE),
                  (LPARAM)filelist);
@@ -46,7 +59,10 @@ static DWORD WINAPI inspect_dialog(LPVOID unused)
         Sleep(10U);
         GetWindowTextA(filename, selected, sizeof(selected));
     }
-    if (_stricmp(selected, "dialog-smoke.bmp") != 0) return 4U;
+    if (_stricmp(selected, "dialog-smoke.bmp") != 0) {
+        PostMessageA(dialog, WM_CLOSE, 0, 0);
+        return 4U;
+    }
 
     InterlockedExchange(&dialog_checks, 1L);
     PostMessageA(dialog, WM_COMMAND, MAKEWPARAM(104, BN_CLICKED),

@@ -271,6 +271,9 @@ static void ensure_window(void)
         window_class.lpfnWndProc = bb_window_proc;
         window_class.hInstance = instance;
         window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
+        window_class.hIcon = LoadIconA(instance, MAKEINTRESOURCEA(1));
+        if (window_class.hIcon == NULL)
+            window_class.hIcon = LoadIcon(NULL, IDI_APPLICATION);
         window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
         window_class.lpszClassName = "ModernBasicBasicWindow";
         (void)RegisterClassA(&window_class);
@@ -305,6 +308,9 @@ static int create_dialog_window(double x, double y, double width,
         window_class.lpfnWndProc = bb_dialog_proc;
         window_class.hInstance = instance;
         window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
+        window_class.hIcon = LoadIconA(instance, MAKEINTRESOURCEA(1));
+        if (window_class.hIcon == NULL)
+            window_class.hIcon = LoadIcon(NULL, IDI_APPLICATION);
         window_class.hbrBackground = GetSysColorBrush(COLOR_3DFACE);
         window_class.lpszClassName = "ModernBasicBasicDialog";
         (void)RegisterClassA(&window_class);

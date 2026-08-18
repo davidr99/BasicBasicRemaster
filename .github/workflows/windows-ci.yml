@@ -3,6 +3,8 @@ name: Windows CI
 on:
   push:
     branches: [master, main]
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
@@ -14,10 +16,12 @@ jobs:
     name: Build, test, and package
     runs-on: windows-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install MinGW GCC
         uses: msys2/setup-msys2@v2
@@ -53,10 +57,22 @@ jobs:
         shell: pwsh
         run: .\tools\build_ide.ps1 -Gcc $env:BBASIC_GCC
 
+      - name: Select package version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -notmatch '^v(.+)$') {
+              throw "Release tag must start with v: $env:GITHUB_REF_NAME"
+            }
+            $version = $Matches[1]
+          } else {
+            $version = "ci-${{ github.run_number }}"
+          }
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 -Append
+
       - name: Create offline deployment package
         shell: pwsh
-        env:
-          PACKAGE_VERSION: ci-${{ github.run_number }}
         run: >-
           .\tools\package.ps1
           -Gcc $env:BBASIC_GCC
@@ -78,7 +94,7 @@ jobs:
           $generated = Join-Path $root 'package-smoke.c'
           $executable = Join-Path $root 'package-smoke.exe'
           & (Join-Path $root 'bbasicc.exe') `
-            (Join-Path $root 'examples\hello.bas') -o $generated
+            (Resolve-Path .\examples\hello.bas).Path -o $generated
           if ($LASTEXITCODE -ne 0) { throw 'Packaged translator failed.' }
           & (Join-Path $root 'toolchain\bin\gcc.exe') -std=c11 -O2 `
             -isystem $systemInclude `
@@ -95,17 +111,32 @@ jobs:
       - name: Verify deployment checksum
         shell: pwsh
         run: |
-          $archive = Get-Item .\dist\*.zip
+          $archive = Get-Item `
+            ".\dist\BasicBasic-$env:PACKAGE_VERSION-win64.zip"
           $expected = (Get-Content ($archive.FullName + '.sha256')).Split(' ')[0]
           $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw 'Deployment checksum mismatch.' }
 
       - name: Upload Windows deployment
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: BasicBasic-Windows-${{ github.run_number }}
           path: |
-            dist/*.zip
-            dist/*.sha256
+            dist/BasicBasic-${{ env.PACKAGE_VERSION }}-win64.zip
+            dist/BasicBasic-${{ env.PACKAGE_VERSION }}-win64.zip.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $deployment = ".\dist\BasicBasic-$env:PACKAGE_VERSION-win64.zip"
+          gh release create $env:GITHUB_REF_NAME `
+            $deployment `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "BasicBasic Remaster $env:GITHUB_REF_NAME" `
+            --generate-notes `
+            --verify-tag
