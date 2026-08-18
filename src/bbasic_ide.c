@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commdlg.h>
 
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -263,6 +264,39 @@ static bool file_contains(const char *path, const char *needle)
     return found;
 }
 
+static bool file_marker_value(const char *path, const char *marker,
+                              char *destination, size_t capacity)
+{
+    FILE *file = fopen(path, "r");
+    char line[4096];
+    if (file == NULL || capacity == 0U) return false;
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char *value = strstr(line, marker);
+        char *end;
+        size_t length;
+        if (value == NULL) continue;
+        value += strlen(marker);
+        while (isspace((unsigned char)*value)) ++value;
+        end = strstr(value, "*/");
+        if (end == NULL) continue;
+        while (end > value && isspace((unsigned char)end[-1])) --end;
+        length = (size_t)(end - value);
+        if (length >= capacity) length = capacity - 1U;
+        memcpy(destination, value, length);
+        destination[length] = '\0';
+        fclose(file);
+        return length > 0U;
+    }
+    fclose(file);
+    return false;
+}
+
+static bool path_is_absolute(const char *path)
+{
+    return (isalpha((unsigned char)path[0]) && path[1] == ':') ||
+           path[0] == '\\' || path[0] == '/';
+}
+
 static DWORD WINAPI build_worker(LPVOID parameter)
 {
     BuildJob *job = (BuildJob *)parameter;
@@ -276,6 +310,13 @@ static DWORD WINAPI build_worker(LPVOID parameter)
     char gcc_include[MAX_PATH];
     char gcc_stddef[MAX_PATH];
     char system_include_option[MAX_PATH + 32] = "";
+    char icon_name[MAX_PATH] = "";
+    char icon_path[MAX_PATH * 2] = "";
+    char icon_directory[MAX_PATH] = "";
+    char windres_path[MAX_PATH] = "";
+    char resource_script[MAX_PATH * 2] = "";
+    char resource_object[MAX_PATH * 2] = "";
+    char resource_option[MAX_PATH * 2 + 8] = "";
     DWORD exit_code = 1U;
     bool windows_application;
 
@@ -308,13 +349,65 @@ static DWORD WINAPI build_worker(LPVOID parameter)
     if (file_exists(gcc_stddef))
         (void)snprintf(system_include_option, sizeof(system_include_option),
                        "-isystem \"%s\" ", gcc_include);
+    if (file_marker_value(job->generated, "BBASIC_ICON:", icon_name,
+                          sizeof(icon_name))) {
+        FILE *resource;
+        char resource_icon[MAX_PATH * 2];
+        char gcc_directory[MAX_PATH];
+        if (path_is_absolute(icon_name)) {
+            copy_text(icon_path, sizeof(icon_path), icon_name);
+        } else {
+            directory_of(icon_directory, sizeof(icon_directory), job->source);
+            join_path(icon_path, sizeof(icon_path), icon_directory, icon_name);
+        }
+        if (!file_exists(icon_path)) {
+            buffer_append(&output, "\r\nIcon file was not found: ");
+            buffer_append(&output, icon_path);
+            buffer_append(&output, "\r\n");
+            goto done;
+        }
+        directory_of(gcc_directory, sizeof(gcc_directory), job->gcc);
+        join_path(windres_path, sizeof(windres_path), gcc_directory,
+                  "windres.exe");
+        if (!file_exists(windres_path)) {
+            buffer_append(&output,
+                          "\r\nThe ICON directive requires windres.exe "
+                          "beside GCC.\r\n");
+            goto done;
+        }
+        (void)snprintf(resource_script, sizeof(resource_script), "%s.icon.rc",
+                       job->generated);
+        (void)snprintf(resource_object, sizeof(resource_object), "%s.icon.o",
+                       job->generated);
+        copy_text(resource_icon, sizeof(resource_icon), icon_path);
+        for (char *character = resource_icon; *character != '\0'; ++character)
+            if (*character == '\\') *character = '/';
+        resource = fopen(resource_script, "w");
+        if (resource == NULL) {
+            buffer_append(&output, "\r\nUnable to create icon resource.\r\n");
+            goto done;
+        }
+        fprintf(resource, "1 ICON \"%s\"\n", resource_icon);
+        fclose(resource);
+        (void)snprintf(command, sizeof(command),
+                       "\"%s\" -i \"%s\" -o \"%s\"", windres_path,
+                       resource_script, resource_object);
+        exit_code = 1U;
+        if (!run_process_capture(command, job->repository, &output,
+                                 &exit_code) || exit_code != 0U) {
+            buffer_append(&output, "\r\nIcon resource compilation failed.\r\n");
+            goto done;
+        }
+        (void)snprintf(resource_option, sizeof(resource_option), "\"%s\" ",
+                       resource_object);
+    }
     (void)snprintf(
         command, sizeof(command),
         "\"%s\" -std=c11 -O2 %s-I \"%s\" \"%s\" \"%s\" \"%s\" "
-        "%s-lm -lgdi32 -luser32 -lcomdlg32 -lwinmm -o \"%s\"",
+        "%s%s-lm -lgdi32 -luser32 -lcomdlg32 -lwinmm -o \"%s\"",
         job->gcc, system_include_option, include_path, job->generated,
-        runtime_path, win32_path, windows_application ? "-mwindows " : "",
-        job->executable);
+        runtime_path, win32_path, resource_option,
+        windows_application ? "-mwindows " : "", job->executable);
     exit_code = 1U;
     if (!run_process_capture(command, job->repository, &output, &exit_code) ||
         exit_code != 0U) {
@@ -327,6 +420,8 @@ static DWORD WINAPI build_worker(LPVOID parameter)
     result->success = true;
 
 done:
+    if (resource_script[0] != '\0') (void)DeleteFileA(resource_script);
+    if (resource_object[0] != '\0') (void)DeleteFileA(resource_object);
     if (output.data == NULL) output.data = _strdup("Build failed.\r\n");
     result->output = output.data;
     if (!PostMessageA(job->notify_window, WM_BUILD_COMPLETE, 0,

@@ -124,7 +124,7 @@ With MinGW on Windows, append
 
 The implemented corpus surface includes:
 
-- comments plus `WINDOWS NAME` and `WINDOWS SIZE` metacommands
+- comments plus `WINDOWS NAME`, `WINDOWS SIZE`, and `REM $ICON` metacommands
 - numeric and string expressions
 - `PRINT`
 - block and single-line `IF` / `ELSEIF` / `ELSE` / `END IF`

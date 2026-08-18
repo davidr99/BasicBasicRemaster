@@ -94,6 +94,7 @@ typedef struct Compiler {
     bool uses_data;
     bool uses_windows_ui;
     char window_name[256];
+    char icon_path[MAX_TOKEN];
     bool has_window_size;
     double window_size[4];
 } Compiler;
@@ -2444,6 +2445,24 @@ static void collect_variables(Compiler *compiler, char *statement)
                        &compiler->window_size[0], &compiler->window_size[1],
                        &compiler->window_size[2], &compiler->window_size[3]) == 4)
                 compiler->has_window_size = true;
+        } else if (strlen(metadata) >= 6U && metadata[0] == '$' &&
+                   tolower((unsigned char)metadata[1]) == 'i' &&
+                   tolower((unsigned char)metadata[2]) == 'c' &&
+                   tolower((unsigned char)metadata[3]) == 'o' &&
+                   tolower((unsigned char)metadata[4]) == 'n' &&
+                   metadata[5] == ':') {
+            char *value = trim(metadata + 6);
+            char quote = *value;
+            char *end;
+            if (quote == '\'' || quote == '"') ++value;
+            end = value + strlen(value);
+            if (quote == '\'' || quote == '"') {
+                char *closing = strchr(value, quote);
+                if (closing != NULL) end = closing;
+            }
+            while (end > value && isspace((unsigned char)end[-1])) --end;
+            *end = '\0';
+            copy_text(compiler->icon_path, sizeof(compiler->icon_path), value);
         }
         return;
     }
@@ -2528,9 +2547,17 @@ static void for_each_statement(char *line,
                                void (*callback)(Compiler *, char *),
                                Compiler *compiler)
 {
+    char *clean = trim(line);
     char *cursor = line;
     char *start = line;
     bool quoted = false;
+    /* REM metadata can contain colons and single-quoted values. Preserve the
+       complete comment so directives such as $ICON are available to the
+       metadata collector instead of being split as BASIC statements. */
+    if (starts_word(clean, "rem")) {
+        callback(compiler, clean);
+        return;
+    }
     while (true) {
         if (*cursor == '"') quoted = !quoted;
         if (!quoted && *cursor == '\'') {
@@ -2697,6 +2724,8 @@ static int translate_file(const char *input_path, const char *output_path)
         fputs("\n/* BBASIC_SUBSYSTEM: WINDOWS */\n", output);
     else
         fputs("\n/* BBASIC_SUBSYSTEM: CONSOLE */\n", output);
+    if (compiler.icon_path[0] != '\0')
+        fprintf(output, "/* BBASIC_ICON: %s */\n", compiler.icon_path);
     fclose(output);
     fclose(input);
     if (compiler.errors != 0) {
