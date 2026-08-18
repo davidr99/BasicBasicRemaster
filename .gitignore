@@ -1,0 +1,8 @@
+/build*/
+/build-*.exe
+/build-*.o
+/build-original-corpus/
+/build-tools/
+/dist/
+/.planning/
+/.serena/
