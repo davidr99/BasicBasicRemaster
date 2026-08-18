@@ -30,6 +30,13 @@ jobs:
         shell: pwsh
         run: .\tools\test.ps1 -Gcc C:\msys64\mingw64\bin\gcc.exe
 
+      - name: Build the complete BASIC sample corpus
+        shell: pwsh
+        run: >-
+          .\tools\build_original_corpus.ps1
+          -SourceDirectory .\examples\original
+          -Gcc C:\msys64\mingw64\bin\gcc.exe
+
       - name: Build the native IDE
         shell: pwsh
         run: .\tools\build_ide.ps1 -Gcc C:\msys64\mingw64\bin\gcc.exe
