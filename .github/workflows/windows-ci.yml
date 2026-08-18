@@ -71,12 +71,17 @@ jobs:
           if (-not $package) { throw 'Deployment directory was not created.' }
           $root = $package.FullName
           $env:Path = (Join-Path $root 'toolchain\bin') + ';' + $env:Path
+          $systemInclude = Join-Path $root 'toolchain\include'
+          if (-not (Test-Path (Join-Path $systemInclude 'stddef.h'))) {
+            throw 'Packaged GCC system headers were not staged.'
+          }
           $generated = Join-Path $root 'package-smoke.c'
           $executable = Join-Path $root 'package-smoke.exe'
           & (Join-Path $root 'bbasicc.exe') `
             (Join-Path $root 'examples\hello.bas') -o $generated
           if ($LASTEXITCODE -ne 0) { throw 'Packaged translator failed.' }
           & (Join-Path $root 'toolchain\bin\gcc.exe') -std=c11 -O2 `
+            -isystem $systemInclude `
             -I (Join-Path $root 'include') $generated `
             (Join-Path $root 'src\bbasic_runtime.c') `
             (Join-Path $root 'src\bbasic_win32.c') `

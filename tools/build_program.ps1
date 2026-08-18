@@ -17,6 +17,12 @@ if ($WindowsApp -and $ConsoleApp) {
     throw "Choose either -WindowsApp or -ConsoleApp, not both."
 }
 $env:Path = (Split-Path -Parent $Gcc) + ";" + $env:Path
+$gccRoot = Split-Path -Parent (Split-Path -Parent $Gcc)
+$gccSystemInclude = Join-Path $gccRoot "include"
+$gccSystemOptions = @()
+if (Test-Path -LiteralPath (Join-Path $gccSystemInclude "stddef.h")) {
+    $gccSystemOptions += "-isystem", $gccSystemInclude
+}
 $repo = Split-Path -Parent $PSScriptRoot
 $inputFile = Get-Item -LiteralPath $InputBas
 if ([string]::IsNullOrWhiteSpace($OutputExe)) {
@@ -29,7 +35,7 @@ $generated = Join-Path $buildDirectory ($inputFile.BaseName + ".c")
 
 New-Item -ItemType Directory -Force -Path $buildDirectory | Out-Null
 
-& $Gcc -std=c11 -O2 -I (Join-Path $repo "include") `
+& $Gcc -std=c11 -O2 @gccSystemOptions -I (Join-Path $repo "include") `
     (Join-Path $repo "src\bbasicc.c") -o $compiler
 if ($LASTEXITCODE -ne 0) { throw "Failed to build the BasicBasic compiler." }
 
@@ -43,7 +49,7 @@ if ($WindowsApp -or (-not $ConsoleApp -and $generatedWindowsApp)) {
     $subsystemOptions += "-mwindows"
 }
 
-& $Gcc -std=c11 -O2 -I (Join-Path $repo "include") $generated `
+& $Gcc -std=c11 -O2 @gccSystemOptions -I (Join-Path $repo "include") $generated `
     (Join-Path $repo "src\bbasic_runtime.c") `
     (Join-Path $repo "src\bbasic_win32.c") `
     @subsystemOptions -lm -lgdi32 -luser32 -lcomdlg32 -lwinmm -o $outputPath
