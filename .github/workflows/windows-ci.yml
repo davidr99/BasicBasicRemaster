@@ -94,7 +94,7 @@ jobs:
           $generated = Join-Path $root 'package-smoke.c'
           $executable = Join-Path $root 'package-smoke.exe'
           & (Join-Path $root 'bbasicc.exe') `
-            (Join-Path $root 'examples\hello.bas') -o $generated
+            (Resolve-Path .\examples\hello.bas).Path -o $generated
           if ($LASTEXITCODE -ne 0) { throw 'Packaged translator failed.' }
           & (Join-Path $root 'toolchain\bin\gcc.exe') -std=c11 -O2 `
             -isystem $systemInclude `
@@ -106,36 +106,6 @@ jobs:
           $output = (& $executable | Out-String)
           if ($output -notmatch 'Hello from modern BasicBasic!') {
             throw 'Packaged program smoke test failed.'
-          }
-
-      - name: Stage standalone executables
-        shell: pwsh
-        run: |
-          $bundleName = "BasicBasic-Executables-$env:PACKAGE_VERSION"
-          $bundle = Join-Path .\dist $bundleName
-          $samples = Join-Path $bundle 'samples'
-          New-Item -ItemType Directory -Force -Path $samples | Out-Null
-          Copy-Item .\build-tools\bbasic-ide.exe -Destination $bundle
-          Copy-Item .\build-tools\bbasicc.exe -Destination $bundle
-          $sources = Get-ChildItem .\examples\original -Filter '*.BAS' |
-            Sort-Object Name
-          foreach ($source in $sources) {
-            $executable = Join-Path .\build-original-corpus `
-              ($source.BaseName + '.exe')
-            if (-not (Test-Path -LiteralPath $executable)) {
-              throw "Missing sample executable: $executable"
-            }
-            Copy-Item -LiteralPath $executable -Destination $samples
-          }
-          $builtSamples = @(Get-ChildItem $samples -Filter '*.exe')
-          if ($builtSamples.Count -ne $sources.Count) {
-            throw "Expected $($sources.Count) sample executables, found $($builtSamples.Count)."
-          }
-          $archive = Join-Path .\dist ($bundleName + '.zip')
-          & (Join-Path $env:SystemRoot 'System32\tar.exe') -a -cf $archive `
-            -C .\dist $bundleName
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Failed to create the standalone executable archive.'
           }
 
       - name: Verify deployment checksum
@@ -157,14 +127,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload standalone executables
-        uses: actions/upload-artifact@v7
-        with:
-          name: BasicBasic-Executables-${{ github.run_number }}
-          path: dist/BasicBasic-Executables-${{ env.PACKAGE_VERSION }}/
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Publish GitHub release
         if: github.ref_type == 'tag'
         shell: pwsh
@@ -172,11 +134,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $deployment = ".\dist\BasicBasic-$env:PACKAGE_VERSION-win64.zip"
-          $checksum = $deployment + '.sha256'
-          $executables = `
-            ".\dist\BasicBasic-Executables-$env:PACKAGE_VERSION.zip"
           gh release create $env:GITHUB_REF_NAME `
-            $deployment $checksum $executables `
+            $deployment `
             --repo $env:GITHUB_REPOSITORY `
             --title "BasicBasic Remaster $env:GITHUB_REF_NAME" `
             --generate-notes `

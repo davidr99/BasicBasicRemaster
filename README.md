@@ -83,16 +83,14 @@ and `-OutputDirectory` to control the package name and destination.
 
 ## Download or publish a release
 
-Each GitHub Actions run publishes two downloadable artifacts:
+Each GitHub Actions run publishes one `BasicBasic-Windows-*` artifact containing
+the complete offline deployment ZIP and its SHA-256 checksum. Sample EXEs are
+not packaged because the included compiler can create them from `.BAS` files.
 
-- `BasicBasic-Windows-*` contains the complete offline deployment ZIP and its
-  SHA-256 checksum.
-- `BasicBasic-Executables-*` exposes `bbasic-ide.exe`, `bbasicc.exe`, and the
-  compiled executables for all 20 original sample programs directly in the
-  downloaded artifact.
-
-Pushing a version tag builds the same files and creates a GitHub Release with
-both ZIP packages attached. For example:
+Pushing a version tag creates a GitHub Release with one clean end-user ZIP. It
+contains the IDE, compiler, runtime sources, and portable GCC toolchain needed
+to compile and run programs; repository documentation, tests, and sample files
+stay out of the release package. For example:
 
 ```powershell
 git tag v0.1.0

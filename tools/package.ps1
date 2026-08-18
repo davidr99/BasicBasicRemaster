@@ -40,14 +40,16 @@ $build = Join-Path $dist "package-build"
 
 Copy-Item -LiteralPath (Join-Path $build "bbasic-ide.exe") -Destination $stage
 Copy-Item -LiteralPath (Join-Path $build "bbasicc.exe") -Destination $stage
-Copy-Item -LiteralPath (Join-Path $repo "README.md") -Destination $stage
-Copy-Item -LiteralPath (Join-Path $repo "include") -Destination $stage -Recurse
-Copy-Item -LiteralPath (Join-Path $repo "src") -Destination $stage -Recurse
-Copy-Item -LiteralPath (Join-Path $repo "examples") -Destination $stage -Recurse
-Copy-Item -LiteralPath (Join-Path $repo "docs") -Destination $stage -Recurse
-New-Item -ItemType Directory -Path (Join-Path $stage "tools") | Out-Null
-Copy-Item -LiteralPath (Join-Path $repo "tools\build_program.ps1") `
-    -Destination (Join-Path $stage "tools")
+$include = Join-Path $stage "include"
+$source = Join-Path $stage "src"
+New-Item -ItemType Directory -Path $include | Out-Null
+New-Item -ItemType Directory -Path $source | Out-Null
+Copy-Item -LiteralPath (Join-Path $repo "include\bbasic_runtime.h") `
+    -Destination $include
+Copy-Item -LiteralPath (Join-Path $repo "src\bbasic_runtime.c") `
+    -Destination $source
+Copy-Item -LiteralPath (Join-Path $repo "src\bbasic_win32.c") `
+    -Destination $source
 Set-Content -LiteralPath (Join-Path $stage "VERSION.txt") `
     -Value $Version -Encoding ASCII
 
@@ -81,6 +83,9 @@ press F7 to compile or F5 to compile and run. Generated C and EXE files are
 placed in build-ide-programs beside the IDE.
 
 $(if ($WithoutToolchain) { "This compact package requires MinGW GCC on PATH or in BBASIC_GCC." } else { "This is the offline package. GCC is bundled under toolchain, so no compiler installation is required." })
+
+This end-user package contains only the application and its compilation/runtime
+dependencies. Project documentation, tests, and sample sources remain on GitHub.
 "@
 Set-Content -LiteralPath (Join-Path $stage "START HERE.txt") `
     -Value $packageReadme -Encoding UTF8

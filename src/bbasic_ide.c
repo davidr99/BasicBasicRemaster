@@ -627,7 +627,7 @@ static void initialize_tool_paths(void)
     copy_text(repository_root, sizeof(repository_root), module_directory);
     for (int depth = 0; depth < 5; ++depth) {
         join_path(candidate, sizeof(candidate), repository_root,
-                  "src\\bbasicc.c");
+                  "src\\bbasic_runtime.c");
         if (file_exists(candidate)) break;
         parent_directory(repository_root);
     }
