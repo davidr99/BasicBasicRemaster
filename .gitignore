@@ -6,3 +6,4 @@
 /dist/
 /.planning/
 /.serena/
+/examples/*.ok
